@@ -1,48 +1,107 @@
-use anyhow::Ok;
+// use anyhow::Ok;
+// use unicode_normalization::UnicodeNormalization;
 
-use crate::chunk;
+
+use std::fmt;
 use std::str::FromStr;
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// struct field {
-//     field : u8
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ChunkType {
-    bytes: [u8; 4]
+    bytes: [u8; 4],
+}
+
+impl fmt::Display for ChunkType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.bytes {
+            writeln!(f, "{}", byte)?
+        }
+        Ok(())
+    }
 }
 
 impl ChunkType {
-
-    pub fn bytes(&self) -> [u8; 4]{
+    pub fn bytes(&self) -> [u8; 4] {
         self.bytes
     }
-    
+
+    pub fn is_valid(&self) -> bool {
+        !self.is_public() && self.is_reserved_bit_valid()
+
+}
+
+    pub fn is_critical(&self) -> bool {
+        if self.bytes[0].is_ascii_uppercase() {
+            return true;
+        }
+        false
+    }
+    fn is_public(&self) -> bool {
+        if self.bytes[1].is_ascii_uppercase() {
+            return true;
+        }
+        return false;
+    }
+
+    fn is_reserved_bit_valid(&self) -> bool {
+        if self.bytes[2].is_ascii_uppercase() {
+            return true;
+        }
+        return false;
+    }
+
+
+    fn is_safe_to_copy(&self) -> bool {
+        if self.bytes[3].is_ascii_lowercase() {
+            return true;
+        }
+        return false;
+    }
+
+
+
+
 }
 
 impl TryFrom<[i32; 4]> for ChunkType {
     type Error = anyhow::Error;
 
     fn try_from(value: [i32; 4]) -> Result<Self, Self::Error> {
-        
         let byte_vec: [u8; 4] = value.map(|i| i as u8);
-        Ok(ChunkType {bytes: byte_vec})
-
+        Ok(ChunkType { bytes: byte_vec })
     }
 }
 
 impl FromStr for ChunkType {
-    type Err = anyhow::Error;
+    type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, String> {
         // Ok(s.as_bytes())
+        // if s.
+        // s.chars().all(char::is_ascii_digit);
+        // char::is_ascii_digit();
+        // if s.chars().all(|x| x.is_ascii_alphabetic()) {
+        //     // bail!(Err);
+
+        // } 
+        if s.len() != 4 {
+            return Err("Length is not equal to 4".to_string());
+        }
+
+        if !s.chars().all(|x| x.is_ascii_alphabetic()) {
+            return Err("contains number".to_string());
+
+        }
+
+
         let temp = s.as_bytes().to_vec();
         // temp.try_into().unwrap()
-        Ok(ChunkType {bytes: temp.try_into().unwrap()})
+        Ok(ChunkType {
+            bytes: temp.try_into().unwrap(),
+        })
+        
     }
-    
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -52,7 +111,7 @@ mod tests {
 
     #[test]
     pub fn test_chunk_type_from_bytes() {
-        let expected= [82, 117, 83, 116];
+        let expected = [82, 117, 83, 116];
         let actual = ChunkType::try_from([82, 117, 83, 116]).unwrap();
 
         assert_eq!(expected, actual.bytes());
@@ -64,7 +123,69 @@ mod tests {
         let actual = ChunkType::from_str("RuSt").unwrap();
         assert_eq!(expected, actual);
     }
-    
+
+    #[test]
+    pub fn test_chunk_type_is_critical() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert!(chunk.is_critical());
+        // println!("{}", chunk)
+    }
+    #[test]
+    pub fn test_chunk_type_is_not_critical() {
+        let chunk = ChunkType::from_str("ruSt").unwrap();
+        assert!(!chunk.is_critical());
+    }
+
+    #[test]
+    pub fn test_valid_chunk_is_valid() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert!(chunk.is_valid());
+    }
+
+    #[test]
+    pub fn test_invalid_chunk_is_valid() {
+        let chunk = ChunkType::from_str("Rust").unwrap();
+        print!("{}", chunk);
+        assert!(!chunk.is_valid());
+
+        let chunk = ChunkType::from_str("Ru1t");
+        assert!(chunk.is_err());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_public() {
+        let chunk = ChunkType::from_str("RUSt").unwrap();
+        assert!(chunk.is_public());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_not_public() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert!(!chunk.is_public());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_reserved_bit_valid() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert!(chunk.is_reserved_bit_valid());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_reserved_bit_invalid() {
+        let chunk = ChunkType::from_str("Rust").unwrap();
+        assert!(!chunk.is_reserved_bit_valid());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_safe_to_copy() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert!(chunk.is_safe_to_copy());
+    }
+
+    #[test]
+    pub fn test_chunk_type_is_unsafe_to_copy() {
+        let chunk = ChunkType::from_str("RuST").unwrap();
+        assert!(!chunk.is_safe_to_copy());
+    }
 
 }
-
