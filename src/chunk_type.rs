@@ -1,20 +1,15 @@
-// use anyhow::Ok;
-// use unicode_normalization::UnicodeNormalization;
-
-
 use std::fmt;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ChunkType {
+pub struct ChunkType {
     bytes: [u8; 4],
 }
 
 impl fmt::Display for ChunkType {
+    // need to add error handling in the future
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.bytes {
-            writeln!(f, "{}", byte)?
-        }
+        write!(f, "{}", String::from_utf8(self.bytes.to_vec()).unwrap());
         Ok(())
     }
 }
@@ -24,10 +19,13 @@ impl ChunkType {
         self.bytes
     }
 
+    pub fn new(val: [u8; 4]) -> ChunkType {
+        ChunkType { bytes: val }
+    }
+
     pub fn is_valid(&self) -> bool {
         !self.is_public() && self.is_reserved_bit_valid()
-
-}
+    }
 
     pub fn is_critical(&self) -> bool {
         if self.bytes[0].is_ascii_uppercase() {
@@ -49,17 +47,12 @@ impl ChunkType {
         return false;
     }
 
-
     fn is_safe_to_copy(&self) -> bool {
         if self.bytes[3].is_ascii_lowercase() {
             return true;
         }
         return false;
     }
-
-
-
-
 }
 
 impl TryFrom<[i32; 4]> for ChunkType {
@@ -75,33 +68,21 @@ impl FromStr for ChunkType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, String> {
-        // Ok(s.as_bytes())
-        // if s.
-        // s.chars().all(char::is_ascii_digit);
-        // char::is_ascii_digit();
-        // if s.chars().all(|x| x.is_ascii_alphabetic()) {
-        //     // bail!(Err);
-
-        // } 
         if s.len() != 4 {
             return Err("Length is not equal to 4".to_string());
         }
 
         if !s.chars().all(|x| x.is_ascii_alphabetic()) {
             return Err("contains number".to_string());
-
         }
-
 
         let temp = s.as_bytes().to_vec();
         // temp.try_into().unwrap()
         Ok(ChunkType {
             bytes: temp.try_into().unwrap(),
         })
-        
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -187,5 +168,4 @@ mod tests {
         let chunk = ChunkType::from_str("RuST").unwrap();
         assert!(!chunk.is_safe_to_copy());
     }
-
 }
