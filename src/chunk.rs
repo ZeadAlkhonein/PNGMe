@@ -16,8 +16,8 @@ fn convert_into_checksum(crc: u32, chunk_type: ChunkType, data: Vec<u8>) -> u32 
     let calculated_crc = digest.finalize();
     calculated_crc
 }
-
-struct Chunk {
+#[derive(Debug)]
+pub struct Chunk {
     data_length: u32,
     chunk_type: ChunkType,
     chunk_data: Vec<u8>,
@@ -25,7 +25,7 @@ struct Chunk {
 }
 
 impl Chunk {
-    fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
+    pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
         let crc = Crc::<u32>::new(&CRC_32_ISO_HDLC);
         let mut digest = crc.digest();
         digest.update(chunk_type.bytes().as_slice());
@@ -40,30 +40,39 @@ impl Chunk {
         }
     }
 
-    fn length(&self) -> u32 {
+    pub fn length(&self) -> u32 {
         self.data_length
     }
-    fn chunk_type(&self) -> ChunkType {
+    pub fn chunk_type(&self) -> ChunkType {
         self.chunk_type.clone()
     }
-    fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &[u8] {
         &self.chunk_data
     }
-    fn crc(&self) -> u32 {
+    pub fn crc(&self) -> u32 {
         self.crc
     }
-    fn data_as_string(&self) -> Result<String, Error> {
-        // type Error = anyhow::Error;
+    pub fn data_as_string(&self) -> Result<String, Error> {
         match String::from_utf8(self.chunk_data.clone()) {
             std::result::Result::Ok(data) => Ok(data),
             Err(e) => Err(e.into()),
         }
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.data_length
+            .to_be_bytes()
+            .iter()
+            .chain(self.chunk_type.bytes().iter())
+            .chain(self.chunk_data.iter())
+            .chain(self.crc.to_be_bytes().iter())
+            .copied()
+            .collect()
+    }
 }
 
 impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // if self.data().is_empty() ||
         write!(
             f,
             "chunk length is {} and chunk_type {} and chunk data {} and chuck crc is {} ",
@@ -79,10 +88,19 @@ impl TryFrom<&[u8]> for Chunk {
     type Error = anyhow::Error;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        // println!("i am here i have issue: ======> {:?}", &value);
         let length = u32::from_be_bytes(value[0..4].try_into()?);
+        // println!("i am here i have issue: ===>{:?}", &value);
+
         let chunk_type = &value[4..8];
+        // println!("i am here i have issue: ===>{:?}", &value);
+
         let message = &value[8..(8 + length as usize)];
+        // println!("i am here i have issue: ===>{:?}", &value);
+
         let crc = u32::from_be_bytes(value[(8 + length as usize)..].try_into()?);
+        
+        // println!("i am here i have issue: ===>{:?}", &value);
 
         let chunk = Chunk {
             data_length: length,
@@ -98,9 +116,10 @@ impl TryFrom<&[u8]> for Chunk {
         }
 
         Ok(chunk)
-
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
