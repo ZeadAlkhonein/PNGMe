@@ -10,7 +10,7 @@ use crate::{
     chunk_type::{self, ChunkType},
 };
 #[derive(Debug)]
-struct Png {
+pub struct Png {
     data: Vec<Chunk>,
 }
 
