@@ -1,26 +1,21 @@
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Bytes, Read, Write};
 use std::process::Output;
 use std::str::FromStr;
 
-// use anyhow::{Error, Ok};
-
-// use anyhow::Ok;
-
+use crate::chunk::{self, Chunk};
 use crate::chunk_type::ChunkType;
-use crate::png::Png;
+use crate::png::{self, Png};
 
-fn string_to_bool(s: &str) -> Option<bool> {
-    // Trim whitespace and convert to lowercase for case-insensitive matching
-    match s.trim().to_lowercase().as_str() {
-        // Matches strings that represent 'true'
-        "true" | "yes" | "on" | "1" => Some(true),
-        // Matches strings that represent 'false'
-        "false" | "no" | "off" | "0" => Some(false),
-        // If the string doesn't match any known boolean representation
-        _ => None,
+
+fn check_string(s: &str) -> Option<&str> {
+    if !s.is_empty() {
+        Some(s)
+    } else {
+        None
     }
 }
+
 
 fn read_file(file_name: &str) -> Result<Vec<u8>, std::io::Error> {
     let mut file = File::open(&file_name)?;
@@ -28,6 +23,12 @@ fn read_file(file_name: &str) -> Result<Vec<u8>, std::io::Error> {
     let mut buffer: Vec<u8> = vec![0; metadata.len() as usize];
     file.read(&mut buffer).expect("buffer overeflow");
     Ok(buffer)
+}
+
+fn write_file(name: &String, byte: Vec<u8>) -> std::io::Result<()>{
+    let nw_file_name = format!("{}.png", name);
+    let mut file = File::create(nw_file_name)?;
+    file.write_all(byte.as_slice())
 }
 #[derive(Debug)]
 enum Commands {
@@ -42,8 +43,9 @@ struct EncodeCommand {
     data: Vec<u8>,
     chunk_type: ChunkType,
     message: String,
-    output: bool,
+    output: String,
 }
+
 
 // struct
 #[derive(Debug)]
@@ -53,22 +55,9 @@ pub struct Config {
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, anyhow::Error> {
-        let output = match args.get(5) {
-            Some(arg) if arg.is_empty() => {
-                eprintln!("Failed to parse case sensitivity, using default value false.");
-                false
-            }
-            Some(arg) => match string_to_bool(arg) {
-                Some(value) => value,
-                None => {
-                    eprintln!("Failed to parse case sensitivity, using default value.");
-                    false
-                }
-            },
-            None => {
-                eprintln!("Failed to parse case sensitivity, using default value.");
-                false
-            }
+        let output: String = match check_string(&args.get(5).unwrap()) {
+            Some(arg) => arg.to_string(),
+            None => "".to_string()
         };
         let cmd: Commands = match args[1].as_str() {
             "encode" => Commands::Encode(EncodeCommand {
@@ -77,6 +66,8 @@ impl Config {
                 message: args[4].clone(),
                 output: output,
             }),
+
+
             "decode" => Commands::Decode,
             "remove" => Commands::Remove,
             "print" => Commands::Print,
@@ -85,20 +76,37 @@ impl Config {
         Ok(Config { command: cmd })
     }
 
-    fn operation(&self) {
-        println!("{:?}", &self.command);
+    fn operation(&self) -> Result<Png, String> {
+        // println!("{:?}", &self.command);
         match &self.command {
             Commands::Encode(encode_cmd) => {
-                println!("Executing encode command: {:?}", encode_cmd);
-            },
+                let mut png = match Png::try_from(encode_cmd.data.as_slice()) {
+                    Ok(png) => png,
+                    Err(_) => return Err("Error".to_string()), // fix later on
+                };
+                let new_data = Chunk::new(
+                    encode_cmd.chunk_type,
+                    encode_cmd.message.as_bytes().to_vec(),
+                );
+                png.append_chunk(new_data);
+
+                if !encode_cmd.output.is_empty() {
+                    let _ = write_file(&encode_cmd.output, png.as_bytes());
+                }
+
+                Ok(png)
+            }
             Commands::Decode => {
-                println!("Executing decode command");
-            },
+                todo!()
+                // println!("Executing decode command");
+            }
             Commands::Remove => {
-                println!("Executing remove command");
-            },
+                todo!()
+                // println!("Executing remove command");
+            }
             Commands::Print => {
-                println!("Executing print command");
+                todo!()
+                // println!("Executing print command");
             }
         }
     }
@@ -115,7 +123,7 @@ mod tests {
             "png_file.png".to_string(),
             "ruSt".to_string(),
             "This is a secret message!".to_string(),
-            "0".to_string(),
+            "new_png".to_string(),
         ])
         .unwrap()
     }
@@ -123,48 +131,15 @@ mod tests {
     #[test]
     fn run() {
         let config = build_config();
-        println!("{:?}", config.command)
+        // println!("{:?}", config.command)
     }
 
     #[test]
     fn encode_png() {
         let config = build_config();
-        config.operation()
+        let new_png = config.operation().unwrap();
+        assert_eq!(&new_png.chunk_by_type("ruSt").unwrap().chunk_type().to_string(), "ruSt");
+
     }
 
-    // #[test]
-    // fn test_encode_command() {
-    //     let config = build_config(Commands::encode, "tests/images/sample.png");
-    //     match config.command {
-    //         Commands::encode => assert!(true),
-    //         _ => panic!("Expected encode command"),
-    //     }
-    // }
-
-    // #[test]
-    // fn test_decode_command() {
-    //     let config = build_config(Commands::decode, "tests/images/sample.png");
-    //     match config.command {
-    //         Commands::decode => assert!(true),
-    //         _ => panic!("Expected decode command"),
-    //     }
-    // }
-
-    // #[test]
-    // fn test_remove_command() {
-    //     let config = build_config(Commands::remove, "tests/images/sample.png");
-    //     match config.command {
-    //         Commands::remove => assert!(true),
-    //         _ => panic!("Expected remove command"),
-    //     }
-    // }
-
-    // #[test]
-    // fn test_print_command() {
-    //     let config = build_config(Commands::print, "tests/images/sample.png");
-    //     match config.command {
-    //         Commands::print => assert!(true),
-    //         _ => panic!("Expected print command"),
-    //     }
-    // }
 }

@@ -69,6 +69,19 @@ impl Chunk {
             .copied()
             .collect()
     }
+
+    // pub fn header_to_chunk() -> Chunk {
+    //     // The signature is 8 bytes, but it’s not a standard chunk, so we define a custom type
+    //     let signature = crate::png::Png::STANDARD_HEADER;
+    //     let header_chunk_type = ChunkType::new([83, 73, 71, 78]);
+
+    //     Chunk {
+    //         data_length: 8, // Length of the signature data
+    //         chunk_type: header_chunk_type, // "SIGN" (arbitrary custom type)
+    //         chunk_data: signature.to_vec(), // [137, 80, 78, 71, 13, 10, 26, 10]
+    //         crc: 0,         // CRC isn’t defined for the signature; use 0 or compute one
+    //     }
+    // }
 }
 
 impl fmt::Display for Chunk {
@@ -99,7 +112,7 @@ impl TryFrom<&[u8]> for Chunk {
         // println!("i am here i have issue: ===>{:?}", &value);
 
         let crc = u32::from_be_bytes(value[(8 + length as usize)..].try_into()?);
-        
+
         // println!("i am here i have issue: ===>{:?}", &value);
 
         let chunk = Chunk {
@@ -118,8 +131,6 @@ impl TryFrom<&[u8]> for Chunk {
         Ok(chunk)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

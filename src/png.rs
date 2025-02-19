@@ -21,7 +21,7 @@ impl Png {
         Png { data: chunks }
     }
 
-    fn append_chunk(&mut self, chunk: Chunk) {
+    pub fn append_chunk(&mut self, chunk: Chunk) {
         self.data.push(chunk)
     }
 
@@ -31,7 +31,7 @@ impl Png {
     fn chunks(&self) -> &[Chunk] {
         &self.data
     }
-    fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
+    pub fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
         match self
             .data
             .iter()
@@ -52,14 +52,13 @@ impl Png {
             Err(format!("Chunk type {} not found", chunk_type))
         }
     }
-    fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = Vec::new();
         for byte in Png::STANDARD_HEADER {
             bytes.push(byte);
         }
         bytes.extend(self.data.iter().map(|chunk| chunk.as_bytes()).flatten());
         bytes
-
     }
 }
 
@@ -82,6 +81,7 @@ impl TryFrom<&[u8]> for Png {
 
         let mut data: Vec<Chunk> = Vec::new();
         let mut tmp = 8;
+        // data.push(Chunk::header_to_chunk());
 
         while tmp < value.len() {
             let chunk_length = u32::from_be_bytes(value[tmp..(tmp + 4)].try_into().unwrap());
@@ -219,6 +219,7 @@ mod tests {
     #[test]
     fn test_append_chunk() {
         let mut png = testing_png();
+        println!("{:?}", png);
         png.append_chunk(chunk_from_strings("TeSt", "Message").unwrap());
         let chunk = png.chunk_by_type("TeSt").unwrap();
         assert_eq!(&chunk.chunk_type().to_string(), "TeSt");
