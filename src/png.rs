@@ -41,7 +41,7 @@ impl Png {
             None => None,
         }
     }
-    fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk, String> {
+    pub fn remove_chunk(&mut self, chunk_type: &str) -> Result<Chunk, String> {
         if let Some(pos) = self
             .data
             .iter()
@@ -230,7 +230,7 @@ mod tests {
     fn test_remove_first_chunk() {
         let mut png = testing_png();
         png.append_chunk(chunk_from_strings("TeSt", "Message").unwrap());
-        png.remove_first_chunk("TeSt").unwrap();
+        png.remove_chunk("TeSt").unwrap();
         let chunk = png.chunk_by_type("TeSt");
         assert!(chunk.is_none());
     }
