@@ -1,5 +1,4 @@
-use std::fs::File;
-use std::io::{self, Bytes, Read, Write};
+use crate::{read_file, write_file};
 use std::process::Output;
 use std::str::FromStr;
 
@@ -7,6 +6,13 @@ use crate::chunk::{self, Chunk};
 use crate::chunk_type::ChunkType;
 use crate::png::{self, Png};
 
+#[derive(Debug)]
+pub enum OperationResult {
+    EncodedPng(Png),
+    DecodedMessage(String),
+    RemovedChunk(Chunk),
+    PrintedInfo(String),
+}
 
 fn check_string(s: &str) -> Option<&str> {
     if !s.is_empty() {
@@ -17,25 +23,18 @@ fn check_string(s: &str) -> Option<&str> {
 }
 
 
-fn read_file(file_name: &str) -> Result<Vec<u8>, std::io::Error> {
-    let mut file = File::open(&file_name)?;
-    let metadata = std::fs::metadata(&file_name)?;
-    let mut buffer: Vec<u8> = vec![0; metadata.len() as usize];
-    file.read(&mut buffer).expect("buffer overeflow");
-    Ok(buffer)
-}
-
-fn write_file(name: &String, byte: Vec<u8>) -> std::io::Result<()>{
-    let nw_file_name = format!("{}.png", name);
-    let mut file = File::create(nw_file_name)?;
-    file.write_all(byte.as_slice())
-}
 #[derive(Debug)]
 enum Commands {
     Encode(EncodeCommand),
-    Decode,
+    Decode(DecodeCommand),
     Remove,
     Print,
+}
+
+#[derive(Debug)]
+struct DecodeCommand {
+    data: Vec<u8>,
+    chunk_type: ChunkType,
 }
 
 #[derive(Debug)]
@@ -46,7 +45,6 @@ struct EncodeCommand {
     output: String,
 }
 
-
 // struct
 #[derive(Debug)]
 pub struct Config {
@@ -55,10 +53,15 @@ pub struct Config {
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, anyhow::Error> {
-        let output: String = match check_string(&args.get(5).unwrap()) {
-            Some(arg) => arg.to_string(),
-            None => "".to_string()
+        let output: String = if args.len() > 4 {
+            match check_string(&args.get(5).unwrap()) {
+                Some(arg) => arg.to_string(),
+                None => String::new(),
+            }
+        } else {
+            String::new()
         };
+
         let cmd: Commands = match args[1].as_str() {
             "encode" => Commands::Encode(EncodeCommand {
                 data: read_file(&args[2].to_string())?,
@@ -67,8 +70,10 @@ impl Config {
                 output: output,
             }),
 
-
-            "decode" => Commands::Decode,
+            "decode" => Commands::Decode(DecodeCommand {
+                data: read_file(&args[2].to_string())?,
+                chunk_type: ChunkType::from_str(args[3].as_str()).unwrap(),
+            }),
             "remove" => Commands::Remove,
             "print" => Commands::Print,
             _ => panic!("Invalid command. Use encode, decode, remove, or print."),
@@ -76,7 +81,7 @@ impl Config {
         Ok(Config { command: cmd })
     }
 
-    fn operation(&self) -> Result<Png, String> {
+    fn operation(&self) -> Result<OperationResult, String> {
         // println!("{:?}", &self.command);
         match &self.command {
             Commands::Encode(encode_cmd) => {
@@ -94,11 +99,24 @@ impl Config {
                     let _ = write_file(&encode_cmd.output, png.as_bytes());
                 }
 
-                Ok(png)
+                Ok(OperationResult::EncodedPng(png))
             }
-            Commands::Decode => {
-                todo!()
-                // println!("Executing decode command");
+            Commands::Decode(decode_cmd) => {
+                // todo!();
+                let png = match Png::try_from(decode_cmd.data.as_slice()) {
+                    Ok(png) => png,
+                    Err(e) => return Err(e.to_string()),
+                };
+                let chunk = match png.chunk_by_type(&decode_cmd.chunk_type.to_string()) {
+                    Some(chunk) => chunk,
+                    None => return Err("Chunk not found".into()),
+                };
+                Ok(OperationResult::DecodedMessage(
+                    (match chunk.data_as_string() {
+                        Ok(massage) => massage,
+                        Err(e) => Err(format!("{}", e.to_string())).unwrap(),
+                    }),
+                ))
             }
             Commands::Remove => {
                 todo!()
@@ -114,9 +132,23 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    // use anyhow::Ok;
+
     use super::*;
 
-    fn build_config() -> Config {
+    fn encode_png_from_file() -> Result<Png, String> {
+        let data = read_file("png_file.png").unwrap();
+
+        let mut png = match Png::try_from(data.as_slice()) {
+            Ok(png) => png,
+            Err(e) => {
+                return Err(format!("Failed to decode PNG: {}", e)); // Assuming your function returns `Result<Png, String>`
+            }
+        };
+        Ok(png)
+    }
+
+    fn build_config_encode() -> Config {
         Config::build(&[
             "0".to_string(),
             "encode".to_string(),
@@ -128,18 +160,63 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn run() {
-        let config = build_config();
-        // println!("{:?}", config.command)
+    fn verify_build_config_decode() -> Config {
+        Config::build(&[
+            "0".to_string(),
+            "decode".to_string(),
+            "new_png.png".to_string(),
+            "ruSt".to_string(),
+        ])
+        .unwrap()
+    }
+
+    fn unverify_build_config_decode() -> Config {
+        Config::build(&[
+            "0".to_string(),
+            "decode".to_string(),
+            "png_file.png".to_string(),
+            "ruSt".to_string(),
+        ])
+        .unwrap()
     }
 
     #[test]
     fn encode_png() {
-        let config = build_config();
-        let new_png = config.operation().unwrap();
-        assert_eq!(&new_png.chunk_by_type("ruSt").unwrap().chunk_type().to_string(), "ruSt");
+        let config = build_config_encode();
+        let operation_result = config.operation().unwrap();
 
+        match operation_result {
+            OperationResult::EncodedPng(png) => {
+                assert_eq!(
+                    png.chunk_by_type("ruSt").unwrap().chunk_type().to_string(),
+                    "ruSt"
+                );
+            }
+            _ => panic!("Expected EncodedPng variant"),
+        }
     }
+    #[test]
+    fn verify_secret_message_in_decoded_png() {
+        let config = verify_build_config_decode();
+        let operation_result = config.operation().unwrap();
 
+        match operation_result {
+            OperationResult::DecodedMessage(message) => {
+                assert_eq!(message, "This is a secret message!");
+            }
+            _ => println!("Expected decoded variant"),
+        }
+    }
+    #[test]
+    fn unverify_secret_message_in_decoded_png() {
+        let config = unverify_build_config_decode();
+        let operation_result = config.operation().unwrap();
+
+        match operation_result {
+            OperationResult::DecodedMessage(message) => {
+                assert_eq!(message, "Chunk not found");
+            }
+            _ => println!("Expected decoded variant"),
+        }
+    }
 }
