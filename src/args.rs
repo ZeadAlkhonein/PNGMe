@@ -1,9 +1,6 @@
-// use anyhow::Ok;
-
 use crate::{read_file, write_file};
-use std::process::Output;
 use std::str::FromStr;
-
+use std::io::{self, Error, Write};
 use crate::chunk::{self, Chunk};
 use crate::chunk_type::ChunkType;
 use crate::png::{self, Png};
@@ -13,7 +10,7 @@ pub enum OperationResult {
     EncodedPng(Png),
     DecodedMessage(String),
     RemovedChunk(Chunk),
-    PrintedInfo(String),
+    PrintedInfo(Result<(), Error>),
 }
 
 fn check_string(s: &str) -> Option<&str> {
@@ -27,19 +24,13 @@ fn check_string(s: &str) -> Option<&str> {
 #[derive(Debug)]
 enum Commands {
     Encode(EncodeCommand),
-    Decode(DecodeCommand),
-    Remove(RemoveCommand),
-    Print,
+    Decode(DataCommand),
+    Remove(DataCommand),
+    Print(DataCommand),
 }
 
 #[derive(Debug)]
-struct DecodeCommand {
-    data: Vec<u8>,
-    chunk_type: ChunkType,
-}
-
-#[derive(Debug)]
-struct RemoveCommand {
+struct DataCommand {
     data: Vec<u8>,
     chunk_type: ChunkType,
 }
@@ -77,15 +68,18 @@ impl Config {
                 output: output,
             }),
 
-            "decode" => Commands::Decode(DecodeCommand {
+            "decode" => Commands::Decode(DataCommand {
                 data: read_file(&args[2].to_string())?,
                 chunk_type: ChunkType::from_str(args[3].as_str()).unwrap(),
             }),
-            "remove" => Commands::Remove(RemoveCommand {
+            "remove" => Commands::Remove(DataCommand {
                 data: read_file(&args[2].to_string())?,
                 chunk_type: ChunkType::from_str(args[3].as_str()).unwrap(),
             }),
-            "print" => Commands::Print,
+            "print" => Commands::Print(DataCommand {
+                data: read_file(&args[2].to_string())?,
+                chunk_type: ChunkType::from_str(args[3].as_str()).unwrap(),
+            }),
             _ => panic!("Invalid command. Use encode, decode, remove, or print."),
         };
         Ok(Config { command: cmd })
@@ -128,22 +122,35 @@ impl Config {
                     }),
                 ))
             }
-            Commands::Remove(decode_cmd) => {
-                let mut png = match Png::try_from(decode_cmd.data.as_slice()) {
+            Commands::Remove(remove_cmd) => {
+                let mut png = match Png::try_from(remove_cmd.data.as_slice()) {
                     Ok(png) => png,
                     Err(e) => return Err(e.to_string()),
                 };
 
-                let chunk = match png.remove_chunk(&decode_cmd.chunk_type.to_string()) {
+                let chunk = match png.remove_chunk(&remove_cmd.chunk_type.to_string()) {
                     Ok(chunk) => chunk,
                     Err(e) => return Err(e.to_string()),
                 };
 
                 Ok(OperationResult::RemovedChunk(chunk))
             }
-            Commands::Print => {
-                todo!()
-                // println!("Executing print command");
+            Commands::Print(print_cmd) => {
+                let png = match Png::try_from(print_cmd.data.as_slice()) {
+                    Ok(png) => png,
+                    Err(e) => return Err(e.to_string()),
+                };
+
+                let chunk = match png.chunk_by_type(&print_cmd.chunk_type.to_string()) {
+                    Some(chunk) => chunk,
+                    None => return Err("Chunk not found".into()),
+                };
+                println!("{}", chunk.chunk_type().to_string());
+
+                let mut stdout = io::stdout();
+                let result: Result<(), io::Error> = writeln!(stdout, "Executing print command\n and the chunk is === {}", chunk.chunk_type().to_string()); // Returns Result
+
+                Ok(OperationResult::PrintedInfo(result))
             }
         }
     }
@@ -152,6 +159,8 @@ impl Config {
 #[cfg(test)]
 mod tests {
     // use anyhow::Ok;
+
+    use anyhow::Ok;
 
     use super::*;
 
@@ -169,12 +178,12 @@ mod tests {
         let data = read_file("png_file.png").unwrap();
 
         let mut png = match Png::try_from(data.as_slice()) {
-            Ok(png) => png,
+            std::result::Result::Ok(png) => png,
             Err(e) => {
                 return Err(format!("Failed to decode PNG: {}", e)); // Assuming your function returns `Result<Png, String>`
             }
         };
-        Ok(png)
+        std::result::Result::Ok(png)
     }
 
     fn build_config_encode() -> Config {
@@ -218,6 +227,17 @@ mod tests {
         ])
         .unwrap()
     }
+
+    fn build_config_print() -> Config {
+        Config::build(&[
+            "0".to_string(),
+            "print".to_string(),
+            "temp_png.png".to_string(),
+            "ruSt".to_string(), // Assuming "ruSt" is the chunk type to be removed
+        ])
+        .unwrap()
+    }
+
 
     #[test]
     fn encode_png() {
@@ -274,4 +294,23 @@ mod tests {
             _ => panic!("Expected RemovedChunk variant"),
         }
     }
+
+    #[test]
+    fn print_chunk_from_png() {
+        let _ = read_and_write_png();
+
+        let config = build_config_print();
+        let operation_result = config.operation().unwrap();
+        // println!("==================");
+        // println!("{:?}", operation_result);
+        match operation_result {
+            OperationResult::PrintedInfo(result) => {
+                assert!(result.is_ok())
+
+            }
+            _ => panic!("Expected PrintedInfo variant"),
+        }
+    }
+
+
 }
