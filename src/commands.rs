@@ -1,11 +1,19 @@
-use crate::chunk_type::{self, ChunkType};
-
+use crate::{chunk::Chunk, chunk_type::ChunkType, png::Png,};
+use std::io::{self, Error};
 #[derive(Debug)]
 pub enum Commands {
     Encode(EncodeCommand),
     Decode(DataCommand),
     Remove(DataCommand),
     Print(DataCommand),
+}
+
+#[derive(Debug)]
+pub enum OperationResult {
+    EncodedPng(Png),
+    DecodedMessage(String),
+    RemovedChunk(Chunk),
+    PrintedInfo(Result<(), Error>),
 }
 
 #[derive(Debug)]
@@ -39,7 +47,12 @@ pub struct EncodeCommand {
 }
 
 impl EncodeCommand {
-    pub fn new(data: Vec<u8>, chunk_type: ChunkType, message: String, output: String) -> EncodeCommand {
+    pub fn new(
+        data: Vec<u8>,
+        chunk_type: ChunkType,
+        message: String,
+        output: String,
+    ) -> EncodeCommand {
         EncodeCommand {
             data,
             chunk_type,

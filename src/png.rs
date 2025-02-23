@@ -127,7 +127,7 @@ mod tests {
         Png::from_chunks(chunks)
     }
 
-    fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk, String> {
+    fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk, anyhow::Error> {
         use std::str::FromStr;
 
         let chunk_type = ChunkType::from_str(chunk_type)?;

@@ -1,136 +1,52 @@
-use crate::chunk::{self, Chunk};
-use crate::chunk_type::ChunkType;
-use crate::commands::{Commands, DataCommand, EncodeCommand};
-use crate::png::{self, Png};
-use crate::{check_string, read_file, write_file};
-use std::io::{self, Error, Write};
-use std::str::FromStr;
+use anyhow::Error;
 
-#[derive(Debug)]
-pub enum OperationResult {
-    EncodedPng(Png),
-    DecodedMessage(String),
-    RemovedChunk(Chunk),
-    PrintedInfo(Result<(), Error>),
-}
+use crate::chunk::{self, Chunk};
+use crate::chunk_type::{self, ChunkType};
+use crate::commands::{Commands, DataCommand, EncodeCommand, OperationResult};
+use crate::png::{self, Png};
+use crate::{check_string, operation, read_file, write_file};
+use std::io::{self, Write};
+use std::str::FromStr;
+// use crate::
 
 // struct
 #[derive(Debug)]
 pub struct Config {
-    command: Commands,
+    pub command: Commands,
 }
 
 impl Config {
     pub fn build(args: &[String]) -> Result<Config, anyhow::Error> {
-        let output: String = if args.len() > 4 {
-            match check_string(&args.get(5).unwrap()) {
-                Some(arg) => arg.to_string(),
-                None => String::new(),
-            }
-        } else {
-            String::new()
-        };
+        if args.len() < 4 {
+            let message = format!(
+                "Not enough arguments provided: expected at least 4, got {}",
+                args.len()
+            );
+            return Err(Error::msg(message));
+        }
+
+        let data = read_file(&args[2].to_string())?;
+        let chunk_type = ChunkType::from_str(args[3].as_str())?;
 
         let cmd: Commands = match args[1].as_str() {
             "encode" => {
-                let data = read_file(&args[2].to_string())?;
-                let chunk_type = ChunkType::from_str(args[3].as_str()).unwrap();
                 let message = args[4].clone();
-                let output = output;
+                let output: String = if args.len() > 4 {
+                    match check_string(&args.get(5).unwrap()) {
+                        Some(arg) => arg.to_string(),
+                        None => String::new(),
+                    }
+                } else {
+                    String::new()
+                };
                 Commands::Encode(EncodeCommand::new(data, chunk_type, message, output))
             }
-
-            "decode" => {
-                let data = read_file(&args[2].to_string())?;
-                let chunk_type = ChunkType::from_str(args[3].as_str()).unwrap();
-                Commands::Decode(DataCommand::new(data, chunk_type))
-            }
-            "remove" => {
-                let data = read_file(&args[2].to_string())?;
-                let chunk_type = ChunkType::from_str(args[3].as_str()).unwrap();
-                Commands::Remove(DataCommand::new(data, chunk_type))
-            }
-            "print" => {
-                let data = read_file(&args[2].to_string())?;
-                let chunk_type = ChunkType::from_str(args[3].as_str()).unwrap();
-                Commands::Print(DataCommand::new(data, chunk_type))
-            }
+            "decode" => Commands::Decode(DataCommand::new(data, chunk_type)),
+            "remove" => Commands::Remove(DataCommand::new(data, chunk_type)),
+            "print" => Commands::Print(DataCommand::new(data, chunk_type)),
             _ => panic!("Invalid command. Use encode, decode, remove, or print."),
         };
         Ok(Config { command: cmd })
-    }
-
-    fn operation(&self) -> Result<OperationResult, String> {
-        // println!("{:?}", &self.command);
-        match &self.command {
-            Commands::Encode(encode_cmd) => {
-                let mut png = match Png::try_from(encode_cmd.data().as_slice()) {
-                    Ok(png) => png,
-                    Err(_) => return Err("Error".to_string()), // fix later on
-                };
-                let new_data = Chunk::new(
-                    encode_cmd.chunk_type().clone(),
-                    encode_cmd.message().as_bytes().to_vec(),
-                );
-                png.append_chunk(new_data);
-
-                if !encode_cmd.output().is_empty() {
-                    let _ = write_file(encode_cmd.output(), png.as_bytes());
-                }
-
-                Ok(OperationResult::EncodedPng(png))
-            }
-            Commands::Decode(decode_cmd) => {
-                let png = match Png::try_from(decode_cmd.data().as_slice()) {
-                    Ok(png) => png,
-                    Err(e) => return Err(e.to_string()),
-                };
-
-                let message = match png.chunk_by_type(&decode_cmd.chunk_type().to_string()) {
-                    Some(chunk) => match chunk.data_as_string() {
-                        Ok(msg) => msg,
-                        Err(e) => return Err(e.to_string()),
-                    },
-                    None => "Chunk not found".to_string(),
-                };
-
-                Ok(OperationResult::DecodedMessage(message))
-            }
-            Commands::Remove(remove_cmd) => {
-                let mut png = match Png::try_from(remove_cmd.data().as_slice()) {
-                    Ok(png) => png,
-                    Err(e) => return Err(e.to_string()),
-                };
-
-                let chunk = match png.remove_chunk(&remove_cmd.chunk_type().to_string()) {
-                    Ok(chunk) => chunk,
-                    Err(e) => return Err(e.to_string()),
-                };
-
-                Ok(OperationResult::RemovedChunk(chunk))
-            }
-            Commands::Print(print_cmd) => {
-                let png = match Png::try_from(print_cmd.data().as_slice()) {
-                    Ok(png) => png,
-                    Err(e) => return Err(e.to_string()),
-                };
-
-                let chunk = match png.chunk_by_type(&print_cmd.chunk_type().to_string()) {
-                    Some(chunk) => chunk,
-                    None => return Err("Chunk not found".into()),
-                };
-                println!("{}", chunk.chunk_type().to_string());
-
-                let mut stdout = io::stdout();
-                let result: Result<(), io::Error> = writeln!(
-                    stdout,
-                    "Executing print command\n and the chunk is === {}",
-                    chunk.chunk_type().to_string()
-                ); // Returns Result
-
-                Ok(OperationResult::PrintedInfo(result))
-            }
-        }
     }
 }
 
@@ -217,7 +133,7 @@ mod tests {
     #[test]
     fn encode_png() {
         let config = build_config_encode();
-        let operation_result = config.operation().unwrap();
+        let operation_result = operation(&config).unwrap();
 
         match operation_result {
             OperationResult::EncodedPng(png) => {
@@ -232,7 +148,7 @@ mod tests {
     #[test]
     fn verify_secret_message_in_decoded_png() {
         let config = verify_build_config_decode();
-        let operation_result = config.operation().unwrap();
+        let operation_result = operation(&config).unwrap();
 
         match operation_result {
             OperationResult::DecodedMessage(message) => {
@@ -246,7 +162,7 @@ mod tests {
         let config = unverify_build_config_decode();
         // println!("==================");
 
-        let operation_result = config.operation().unwrap();
+        let operation_result = operation(&config).unwrap();
         // println!("==================");
 
         match operation_result {
@@ -262,7 +178,7 @@ mod tests {
         let _ = read_and_write_png();
 
         let config = build_config_remove();
-        let operation_result = config.operation().unwrap();
+        let operation_result = operation(&config).unwrap();
 
         match operation_result {
             OperationResult::RemovedChunk(removed_chunk) => {
@@ -278,9 +194,7 @@ mod tests {
         let _ = read_and_write_png();
 
         let config = build_config_print();
-        let operation_result = config.operation().unwrap();
-        // println!("==================");
-        // println!("{:?}", operation_result);
+        let operation_result = operation(&config).unwrap();
         match operation_result {
             OperationResult::PrintedInfo(result) => {
                 assert!(result.is_ok())

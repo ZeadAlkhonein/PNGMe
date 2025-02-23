@@ -1,6 +1,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use anyhow::Error;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ChunkType {
     bytes: [u8; 4],
@@ -65,19 +67,20 @@ impl TryFrom<[i32; 4]> for ChunkType {
 }
 
 impl FromStr for ChunkType {
-    type Err = String;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, String> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != 4 {
-            return Err("Length is not equal to 4".to_string());
+            let error_msg = "Length is not equal to 4 ".to_string();
+            return Err(Error::msg(error_msg));
         }
 
         if !s.chars().all(|x| x.is_ascii_alphabetic()) {
-            return Err("contains number".to_string());
+            let error_msg = "contains number".to_string();
+            return Err(Error::msg(error_msg));
         }
 
         let temp = s.as_bytes().to_vec();
-        // temp.try_into().unwrap()
         Ok(ChunkType {
             bytes: temp.try_into().unwrap(),
         })
