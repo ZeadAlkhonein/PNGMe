@@ -7,7 +7,6 @@ use pngme::{args::Config, operation};
 
 fn main(){
     let args: Vec<String> = env::args().collect();
-    dbg!(&args);
 
     let config: Config = Config::build(&args).unwrap_or_else(|err| {
         eprintln!("Error building config: {}", err);
